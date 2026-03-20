@@ -73,8 +73,8 @@ No external packages are required.
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/hbutterfinger/custom-parser.git
-cd custom-parser
+git clone https://github.com/hbutterfinger/AdaParseAST.git
+cd AdaParseAST
 ```
 
 ### 2. Run the parser
@@ -124,7 +124,7 @@ The program prints the AST representation for the full block, including the assi
 
 ## Acknowledgments
 
-This project is a documentations and extension from Project 1 - CMPSC 461 @ Penn State
+This project is a documentation and extension from Project 1 - CMPSC 461 @ Penn State
 
 
 ## Contributing
