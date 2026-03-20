@@ -21,7 +21,24 @@ class Lexer:
         self.token_specs = [
             ("ASSIGN", r":="),
             ("SEMICOLON", r";"),
-            # Fill in more token specifications here
+            ("COMMENT", r"--[^\n]*"),
+            ("SKIP", r"[\s]+"),
+            ("DOTDOT", r"\.\."),
+            ("LE", r"<="),
+            ("GE", r">="),
+            ("NE", r"/="),
+            ("LT", r"<"),
+            ("GT", r">"),
+            ("PLUS", r"\+"),
+            ("MINUS", r"-"),
+            ("STAR", r"\*"),
+            ("SLASH", r"/"),
+            ("LPAREN", r"\("),
+            ("RPAREN", r"\)"),
+            ("INTEGER", r"[0-9]+"),
+            ("ID", r"[A-Za-z_][A-Za-z0-9_]*"),
+            ("MISMATCH", r"."),
+            # Fill in more token specifications here if needed
         ]
         self.token_regex = re.compile(
             "|".join(f"(?P<{pair[0]}>{pair[1]})" for pair in self.token_specs)
@@ -32,14 +49,36 @@ class Lexer:
         Tokenizes the input code into a list of tokens.
         Each token is represented as a tuple (token_type, token_value).
         """
+
         for mo in self.token_regex.finditer(self.code):
+            if mo is None:
+                raise RuntimeError(f"Unexpected character") #checks for empty mo
             kind = mo.lastgroup
             value = mo.group()
-            if kind == "SKIP":
+            if kind == "SKIP" or kind =="COMMENT":
                 continue
             elif kind == "MISMATCH":
                 raise RuntimeError(f"Unexpected character: {value}")
-            else:
+            elif kind == "ID": # keyword case
+                reserved = { 
+                    "if": "IF",
+                    "then": "THEN",
+                    "else": "ELSE",
+                    "end": "END",
+                    "loop": "LOOP",
+                    "while": "WHILE",
+                    "for": "FOR",
+                    "in": "IN",
+                    "Put": "PUT",
+                    "and": "AND",
+                    "or": "OR",
+                    "mod": "MOD",
+                    "True": "BOOLEAN",
+                    "False": "BOOLEAN",
+                } # dict for reserved keywords
+                token_type = reserved.get(value, "ID")
+                self.tokens.append((token_type, value)) # token for keywords 
+            else: # other identifiers
                 self.tokens.append((kind, value))
         self.tokens.append(("EOF", ""))  # End-of-file token
         return self.tokens
