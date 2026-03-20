@@ -1,5 +1,5 @@
 from ASTNodeDefs import *
-from typing import List, Tuple, Union
+from typing import List, Tuple, Union, Set
 import re
 
 """
@@ -94,8 +94,9 @@ class Parser:
         return self.tokens[self.pos]
 
     def advance(self) -> None:
-        # Advances to the next token
-        self.pos += 1
+        # Advances to the next token unless at end of list
+        if self.pos < len(self.tokens) - 1:
+            self.pos += 1
 
     def expect(self, token_type: str) -> Tuple[str, str]:
         # Consumes the current token if it matches the expected type and returns it
@@ -113,12 +114,208 @@ class Parser:
         self.expect("EOF")
         return block
 
-    def parse_block(self) -> Block:
-        # Implementation Required
-        pass
+    def parse_block(self, terminators: Set[str] | None = None) -> Block:
+        statements: List[ASTNode] = []
+        # proceeds as normal if there are not specified terminators
+        if terminators is None:
+            statements.append(self.parse_statement())
+        else: # with specified terminators, parsing stops when it hits a terminator
+            while self.current_token()[0] not in terminators:
+                statements.append(self.parse_statement())
+        
+        # wrap the statement list in a Block AST node
+        return Block(statements)
 
     def parse_statement(self) -> Union[Assign, Put, If, WhileLoop, ForLoop]:
-        # Implementation Required
-        pass
+        # chooses how to parse based on token type
+        token_type, _ = self.current_token()
+        if token_type == "ID":
+            return self.parse_assign_statement()
+        if token_type == "PUT":
+            return self.parse_put_statement()
+        if token_type == "IF":
+            return self.parse_if_statement()
+        if token_type == "WHILE":
+            return self.parse_while_loop()
+        if token_type == "FOR":
+            return self.parse_for_loop()
+        # other types are invalid
+        raise RuntimeError(f"Unexpected token type {token_type} in statement")
 
-    # More parsing methods as needed
+    def parse_assign_statement(self) -> Assign: 
+        # <ID> := <expr>;
+        _, name = self.expect("ID")
+        self.expect("ASSIGN")
+        expr = self.parse_expr()
+        self.expect("SEMICOLON")
+
+        # build the AST assignment node using an ID on the lhs
+        return Assign(Identifier(name), expr)
+    
+    def parse_put_statement(self) -> Put:
+        # Put(<expr>);
+        self.expect("PUT")
+        self.expect("LPAREN")
+        expr = self.parse_expr()
+        self.expect("RPAREN")
+        self.expect("SEMICOLON")
+
+        # return the print/output AST node
+        return Put(expr)
+
+    def parse_if_statement(self) -> If:
+        # if <expr> then <block-stmt> (else<block-stmt>)? end if;
+        # if statement with optional else
+        self.expect("IF")
+        condition = self.parse_expr()
+        self.expect("THEN")
+
+        then_block = self.parse_block({"ELSE", "END"}) # parse the "then" branch until we hit either ELSE or END
+
+        else_block = None
+        if self.current_token()[0] == "ELSE":
+            self.advance()
+            else_block = self.parse_block({"END"})
+
+        self.expect("END")
+        self.expect("IF")
+        self.expect("SEMICOLON")
+
+        # return the conditional AST node
+        return If(condition, then_block, else_block)
+
+    def parse_while_loop(self) -> WhileLoop:
+        # while <expr> loop <block-stmt> end loop;
+        self.expect("WHILE")
+        condition = self.parse_expr()
+        self.expect("LOOP")
+
+        body = self.parse_block({"END"}) # parse loop body until END.
+        
+        self.expect("END")
+        self.expect("LOOP")
+        self.expect("SEMICOLON")
+
+        # build the while loop AST node
+        return WhileLoop(condition, body)
+
+    def parse_for_loop(self) -> ForLoop:
+        # for <id> in <expr> . . <expr> loop <block-stmt> end loop;
+        self.expect("FOR")
+        _, iterator_name = self.expect("ID") # loop var
+        self.expect("IN")
+
+        #start end of for loop
+        start_expr = self.parse_expr()
+        self.expect("DOTDOT")
+        end_expr = self.parse_expr()
+
+        #parse block statement until END
+        self.expect("LOOP")
+        body = self.parse_block({"END"})
+        self.expect("END")
+        self.expect("LOOP")
+        self.expect("SEMICOLON")
+
+        # return the for loop AST node
+        return ForLoop(Identifier(iterator_name), start_expr, end_expr, body)
+
+    def parse_expr(self) -> ASTNode:
+        # <conjunction> (or <conjunction>)*
+        # multiple conjunctions or'd together
+        conjunctions = [self.parse_conjunction()]
+        while self.current_token()[0] == "OR": # looks for OR
+            self.advance()
+            conjunctions.append(self.parse_conjunction())
+
+        if len(conjunctions) > 1: # for multiple conjunctions
+            result = Or(conjunctions)
+        else: # for only one conjunction
+            result = conjunctions[0]
+        return result
+
+    def parse_conjunction(self) -> ASTNode:
+        # <comparison> (and <comparison>)*
+        # multiple comparisons and'd together
+        comparisons = [self.parse_comparison()]
+        while self.current_token()[0] == "AND": # looks for AND
+            self.advance()
+            comparisons.append(self.parse_comparison())
+
+        if len(comparisons) > 1: # for multiple comparisons
+            result = Or(comparisons)
+        else: # for only one comparison
+            result = comparisons[0]
+        return result
+
+    def parse_comparison(self) -> ASTNode:
+        # <term> (( = | /= | < | > | <= | >= ) <term>)?
+        # either a single term or two terms separated by comparison sign
+        # checks left side for term first
+        left = self.parse_term()
+        token_type, token_value = self.current_token()
+        # check for any comparisons
+        if token_type in {"EQ", "NE", "LT", "GT", "LE", "GE"}:
+            self.advance()
+            right = self.parse_term()
+            return Comparison(left, token_value, right) # if has comparisons
+        
+        return left # if no comparisons
+
+    def parse_term(self) -> ASTNode:
+        # <factor> (( + | - ) <factor>)*
+        # each term can be multiple factors separated by addition/subtraction
+        factors = [self.parse_factor()]
+        operators: List[str] = []
+
+        while self.current_token()[0] in {"PLUS", "MINUS"}: # keeps collecting factors if + or -
+            operators.append(self.current_token()[1])
+            self.advance()
+            factors.append(self.parse_factor())
+        
+        if operators: # for multiple factors
+            result = Term(factors, operators)
+        else: # for one factor
+            result = factors[0]
+        return result
+
+    def parse_factor(self) -> ASTNode:
+        #  <primary> (( * | / | mod) <primary>)*
+        # each factor can be multiple primaries separated by *, /, or mod
+        primaries = [self.parse_primary()]
+        operators: List[str] = []
+
+        while self.current_token()[0] in {"STAR", "SLASH", "MOD"}: # keeps collecting primaries if *, /, or mod
+            operators.append(self.current_token()[1])
+            self.advance()
+            primaries.append(self.parse_primary())
+        
+        if operators: # for multiple primaries
+            result = Factor(primaries, operators)
+        else: # for one primary
+            result = primaries[0]
+        return result
+
+    def parse_primary(self) -> ASTNode:
+        # <integer> | <boolean> | <id> | (<expr>)
+        # primaries can only be integer ([0-9]+), booleans (True | False), ids ([a-zA-Z_][a-zA-Z0-9_]*), or expressions in parenthesis
+        token_type, token_value = self.current_token()
+        if token_type == "INTEGER":
+            self.advance()
+            return Integer(token_value)
+        if token_type == "BOOLEAN":
+            self.advance()
+            return Boolean(token_value)
+        if token_type == "ID":
+            self.advance()
+            return Identifier(token_value)
+        if token_type == "LPAREN":
+            self.advance()
+            expr = self.parse_expr()
+            self.expect("RPAREN")
+            return expr
+        
+        # everything else is invalid
+        raise RuntimeError(f"Unexpected token type {token_type} in primary")
+    
+        # More parsing methods can be added as needed
