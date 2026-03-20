@@ -1,4 +1,4 @@
-# Custom Language Parser
+# AdaParseAST Custom Language Parser
 
 A compact Python parser for a small Ada-style imperative language. It reads source code, validates the syntax, builds an Abstract Syntax Tree (AST), and prints a formatted textual representation of that tree.
 
@@ -135,3 +135,10 @@ This project is a documentations and extension from Project 1 - CMPSC 461 @ Penn
 - example programs,
 - AST output documentation,
 - any parser tests or fixtures.
+
+
+## License
+
+This project is licensed under the [MIT License](LICENSE). 
+
+Copyright (c) 2026 hbutterfinger
