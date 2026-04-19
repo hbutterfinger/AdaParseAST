@@ -171,7 +171,31 @@ class Parser:
         raise SemanticError(f"Unexpected token type {token_type} in statement")
 
     def parse_decl_statement(self) -> Decl:
-        pass
+        # var <id> : <type> (:= <expr>)? ;
+        self.expect("VAR")
+        _, name = self.expect("ID")
+        self.expect("COLON")
+        _, type_name = self.expect("TYPE")
+        if type_name not in {"Integer", "Boolean"}: # raise semantic error when type is neither integer nor boolean
+            raise SemanticError(f"Unknown type {type_name}")
+        declared_type = type_name
+
+        if self.in_current_scope(name):
+            raise SemanticError(f"Redeclaration of {name} in the same scope")
+        
+        initial_value = None
+        if self.current_token()[0] == "ASSIGN":
+            self.advance()
+            initial_value = self.parse_expr()
+            expr_type = self.find_type(initial_value)
+            if expr_type != declared_type:
+                raise SemanticError("Type mismatch") # raise error when the expected type for node initial_value does not match the declared_type
+
+        self.expect("SEMICOLON")
+
+        self.declare(name, declared_type)
+        # build the AST decl node 
+        return Decl(Identifier(name), Type(declared_type), initial_value)
 
     def parse_assign_statement(self) -> Assign: 
         # <ID> := <expr>;
@@ -201,12 +225,12 @@ class Parser:
         condition = self.parse_expr()
         self.expect("THEN")
 
-        then_block = self.parse_block({"ELSE", "END"}) # parse the "then" branch until we hit either ELSE or END
+        then_block = self.parse_block({"ELSE", "END"}, new_scope=True) # parse the "then" branch until we hit either ELSE or END
 
         else_block = None
         if self.current_token()[0] == "ELSE":
             self.advance()
-            else_block = self.parse_block({"END"})
+            else_block = self.parse_block({"END"}, new_scope=True)
 
         self.expect("END")
         self.expect("IF")
@@ -221,7 +245,7 @@ class Parser:
         condition = self.parse_expr()
         self.expect("LOOP")
 
-        body = self.parse_block({"END"}) # parse loop body until END.
+        body = self.parse_block({"END"}, new_scope=True) # parse loop body until END.
         
         self.expect("END")
         self.expect("LOOP")
@@ -243,7 +267,7 @@ class Parser:
 
         #parse block statement until END
         self.expect("LOOP")
-        body = self.parse_block({"END"})
+        body = self.parse_block({"END"}, new_scope=True)
         self.expect("END")
         self.expect("LOOP")
         self.expect("SEMICOLON")
@@ -351,15 +375,32 @@ class Parser:
 
     # More parsing methods can be added as needed
 
-    # helps to enform semantic rules
+    # helps to enforce semantic rules
     def declare(self, name: str, type_name: str) -> None:
-        # for variable declaration before use
-        pass
+        # helper to declare variable
+        if not self.scopes:
+            raise SemanticError("No active scopes") # when self.scopes is empty
+        self.scopes[-1][name] = type_name # assigns type_name to name in local scope 
 
     def in_current_scope(self, name: str) -> bool:
         # helper to check if variable is in scope
-        pass
+        if not self.scopes:
+            return False 
 
-    def find_var(self, name: str):
+        current_scope = self.scopes[-1] 
+
+        if name in current_scope:
+            return True
+        else:
+            return False
+
+    def lookup(self, name: str):
         # finds the scope the input var is in, return None if does not exist
+        for scope in reversed(self.scopes): # looks through self.scopes in reverse order, bottom to top
+            if name in scope:
+                return scope[name] #returns the value of name in closest scope
+        return None
+    
+    def find_type(self, node: ASTNode) -> str:
+        # returns the correct type based on the input node
         pass
