@@ -128,7 +128,7 @@ class Parser:
             self.expect("EOF")
             return block
         except Exception:
-            return Error
+            return Error()
 
     def parse_block(self, terminators: List[str] = None, new_scope: bool = True) -> Block:
         if new_scope:
@@ -199,10 +199,18 @@ class Parser:
 
     def parse_assign_statement(self) -> Assign: 
         # <ID> := <expr>;
+        # check for declaration before use
         _, name = self.expect("ID")
+        var_type = self.lookup(name)
+        if var_type is None:
+            raise SemanticError(f"Variable {name} used before declaration")
         self.expect("ASSIGN")
         expr = self.parse_expr()
+        expr_type = self.check_type(expr)
         self.expect("SEMICOLON")
+
+        if expr_type != var_type:
+            raise SemanticError("Assignment type mismatch")
 
         # build the AST assignment node using an ID on the lhs
         return Assign(Identifier(name), expr)
@@ -221,8 +229,11 @@ class Parser:
     def parse_if_statement(self) -> If:
         # if <expr> then <block-stmt> (else<block-stmt>)? end if;
         # if statement with optional else
+        # condition must be boolean
         self.expect("IF")
         condition = self.parse_expr()
+        if self.check_type(condition) != "Boolean":
+            raise SemanticError("If condition must be Boolean")
         self.expect("THEN")
 
         then_block = self.parse_block({"ELSE", "END"}, new_scope=True) # parse the "then" branch until we hit either ELSE or END
@@ -241,8 +252,11 @@ class Parser:
 
     def parse_while_loop(self) -> WhileLoop:
         # while <expr> loop <block-stmt> end loop;
+        # condition must be boolean
         self.expect("WHILE")
         condition = self.parse_expr()
+        if self.check_type(condition) != "Boolean":
+            raise SemanticError("While condition must be Boolean")
         self.expect("LOOP")
 
         body = self.parse_block({"END"}, new_scope=True) # parse loop body until END.
@@ -256,14 +270,25 @@ class Parser:
 
     def parse_for_loop(self) -> ForLoop:
         # for <id> in <expr> . . <expr> loop <block-stmt> end loop;
+        # iterator must be integer
+        # for loop start and end must be integer
         self.expect("FOR")
         _, iterator_name = self.expect("ID") # loop var
+        iterator_type = self._lookup(iterator_name)
+        if iterator_type is None:
+            raise SemanticError(f"Loop iterator {iterator_name} used before declaration")
+        if iterator_type != "Integer":
+            raise SemanticError("Loop iterator must be Integer")
         self.expect("IN")
 
         #start end of for loop
         start_expr = self.parse_expr()
+        if self.check_type(start_expr) != "Integer":
+            raise SemanticError("For loop range start must be Integer")
         self.expect("DOTDOT")
         end_expr = self.parse_expr()
+        if self.check_type(end_expr) != "Integer":
+            raise SemanticError("For loop range end must be Integer")
 
         #parse block statement until END
         self.expect("LOOP")
@@ -354,6 +379,7 @@ class Parser:
     def parse_primary(self) -> ASTNode:
         # <integer> | <boolean> | <id> | (<expr>)
         # primaries can only be integer ([0-9]+), booleans (True | False), ids ([a-zA-Z_][a-zA-Z0-9_]*), or expressions in parenthesis
+        # variable must be used before declaration
         token_type, token_value = self.current_token()
         if token_type == "INTEGER":
             self.advance()
@@ -362,6 +388,8 @@ class Parser:
             self.advance()
             return Boolean(token_value)
         if token_type == "ID":
+            if self.lookup(token_value) is None:
+                raise SemanticError(f"Variable {token_value} used before declaration")
             self.advance()
             return Identifier(token_value)
         if token_type == "LPAREN":
@@ -444,8 +472,31 @@ class Parser:
                     raise SemanticError("Arithmetic operands must be Integer")
             return "Integer"
         
-        if isinstance(node, Factor): #arithmetic
+        if isinstance(node, Factor): # arithmetic
             for primary in node.primaries:
                 if self.check_type(primary) != "Integer":
                     raise SemanticError("Arithmetic operands must be Integer")
             return "Integer"
+        
+        if isinstance(node, Type): # if expression is the Type node, return type name
+            return node.type_name
+
+        # invalid as expression
+        if isinstance(node, Block):
+            raise SemanticError("Block cannot appear in expression")
+        if isinstance(node, Decl):
+            raise SemanticError("Declaration cannot appear in expression")
+        if isinstance(node, Put):
+            raise SemanticError("Put cannot appear in expression")
+        if isinstance(node, Assign):
+            raise SemanticError("Assign cannot appear in expression")
+        if isinstance(node, If):
+            raise SemanticError("If cannot appear in expression")
+        if isinstance(node, WhileLoop):
+            raise SemanticError("WhileLoop cannot appear in expression")
+        if isinstance(node, ForLoop):
+            raise SemanticError("ForLoop cannot appear in expression")
+        if isinstance(node, Error): # error node is invalid
+            raise SemanticError("Invalid")
+        # all other nodes are invalid
+        raise SemanticError(f"Unsupported AST node type: {type(node).__name__}")
