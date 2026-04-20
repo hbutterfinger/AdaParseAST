@@ -127,7 +127,7 @@ class Parser:
             block = self.parse_block(new_scope=False) # no new scopes are needed, using the global scope instead
             self.expect("EOF")
             return block
-        except Exception:
+        except SemanticError:
             return Error()
 
     def parse_block(self, terminators: List[str] = None, new_scope: bool = True) -> Block:
@@ -274,7 +274,7 @@ class Parser:
         # for loop start and end must be integer
         self.expect("FOR")
         _, iterator_name = self.expect("ID") # loop var
-        iterator_type = self._lookup(iterator_name)
+        iterator_type = self.lookup(iterator_name)
         if iterator_type is None:
             raise SemanticError(f"Loop iterator {iterator_name} used before declaration")
         if iterator_type != "Integer":
