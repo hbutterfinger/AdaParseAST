@@ -1,21 +1,26 @@
 # AdaParseAST Custom Language Parser
 
-A compact Python parser for a small Ada-style imperative language. It reads source code, validates the syntax, builds an Abstract Syntax Tree (AST), and prints a formatted textual representation of that tree.
+AdaParseAST is a recursive descent parser and semantic analyzer for a simplified Ada-inspired programming language written in Python. The project tokenizes source code, constructs an Abstract Syntax Tree (AST), and performs semantic validation including scope resolution and static type checking.
 
-## Overview
+## Features
 
 This project implements a parser for a custom imperative language with familiar control-flow and expression syntax. It is designed to:
 
-- recognize valid source programs in the language,
-- build an AST that reflects the program structure,
-- preserve operator precedence and associativity in expressions,
-- provide a clean textual AST output for downstream tooling or testing.
+- Recursive descent parser implementation
+- Integrated lexer/tokenizer
+- AST generation for all supported language constructs
+- Semantic analysis with scoped symbol tables
+- Static type checking for expressions and assignments
+- Declaration-before-use validation
+- Redeclaration prevention within the same scope
+- Nested scope handling for conditional statements and loops
+- Support for arithmetic, logical, and comparison expressions
+- Error handling using semantic validation rules
 
-The language supports assignments, output statements, conditional blocks, and both `while` and `for` loops.
-
-## Language Features
+## Supported Language Constructs
 
 ### Statements
+- Variable Declaration
 - Assignment
 - `Put(...)` output statement
 - `if ... then ... else ... end if`
@@ -31,6 +36,45 @@ The language supports assignments, output statements, conditional blocks, and bo
 - Comparison operators: `=`, `/=`, `<`, `>`, `<=`, `>=`
 - Logical operators: `and`, `or`
 
+## Semantic Analysis
+
+### Declaration Before Use
+
+Checks for declaration before use using the `var` keyword. 
+```
+var x : Integer := 10;
+var flag : Boolean := True;
+```
+
+### No Redeclaration in the Same Scope
+
+Invalid:
+```
+var x : Integer;
+var x : Integer;
+```
+
+### Static Type Checking
+
+Assignments and expressions must use compatible types.
+
+Invalid:
+```
+var x : Integer;
+x := True;
+```
+
+### Boolean Conditions
+
+Conditions for if and while statements must evaluate to Boolean.
+
+Invalid:
+```
+if 5 then
+    Put(5);
+end if;
+```
+
 ## Grammar Summary
 
 ```ebnf
@@ -40,7 +84,10 @@ stmt         ::= assign-stmt
                | put-stmt
                | if-stmt
                | loop-stmt
+               | decl-stmt
 
+decl-stmt    ::= ‘var’ id ‘:’ type (‘:=’ expr)? ‘;’
+type         ::= ‘Integer’ | ‘Boolean’
 assign-stmt  ::= id ":=" expr ";"
 put-stmt     ::= "Put" "(" expr ")" ";"
 if-stmt      ::= "if" expr "then" block-stmt ("else" block-stmt)? "end" "if" ";"
@@ -58,15 +105,13 @@ primary       ::= integer | bool | id | "(" expr ")"
 
 ## Output
 
-For valid input, the parser prints the formatted AST as text. The exact node layout and formatting follow the project’s AST node definitions, so the output can be used for testing and verification.
+For valid input programs, the parser prints the formatted AST as text. The exact node layout and formatting follow the project’s AST node definitions, so the output can be used for testing and verification.
+For invalid inpuit programs, if the program violates type or scoping rules, the exact string "Invalid" is returned. 
 
 ## Compatibility
 
-- Python 3
 - Compatible with Python 3.10 or lower
-- Standard library only
-
-No external packages are required.
+- No external packages are required
 
 ## Getting Started
 
@@ -77,61 +122,45 @@ git clone https://github.com/hbutterfinger/AdaParseAST.git
 cd AdaParseAST
 ```
 
-### 2. Run the parser
+### 2. Run Verification Tests
 
-If your entry point is `Parser.py`, run:
-
-```bash
-python Parser.py < input.txt
 ```
-
-If your project uses a different driver script, replace `Parser.py` with the correct file name.
-
-### 3. View the AST output
-
-The parser writes the AST to standard output. You can redirect it to a file if needed:
-
-```bash
-python Parser.py < input.txt > ast_output.txt
+python Verify.py
 ```
-
-## Example
+## Example Program
 
 ### Input
 
-```text
-if y then
-    z := 10;
-else
-    z := 20;
-    x := y;
+```
+var x : Integer := 10;
+var check : Boolean := False;
+
+if x > 0 then
+    check := True;
 end if;
+
+while x > 0 loop
+    Put(x);
+    x := x - 1;
+end loop;
 ```
 
 ### Output
 
-The program prints the AST representation for the full block, including the assignment nodes, the conditional node, and the nested expressions.
-```text
+The program prints the AST representation for the full block, including the assignment nodes, the conditional node, and the nested expressions (invalid grammar outputs "Invalid"). 
+```
 Block([
-    If(Identifier(y),
-        Block([Assign(Identifier(z),Integer(10))]),
-        Block([Assign(Identifier(z),Integer(20)),Assign(Identifier(x),Identifier(y))])
-    )
+    Decl(Identifier(x), Type(Integer), Integer(10)),
+    Decl(Identifier(check), Type(Boolean), Boolean(False)),
+    If(...),
+    WhileLoop(...)
 ])
 ```
 
 
-##  Notes
-
-- Keep the parser compatible with the provided AST node definitions.
-- Preserve operator precedence when parsing expressions.
-- Make sure nested blocks and optional `else` branches are handled correctly.
-- Avoid third-party dependencies to keep the project portable.
-
-
 ## Acknowledgments
 
-This project is a documentation and extension from Project 1 - CMPSC 461 @ Penn State
+This project is developed as part of a compiler/parser design project focused on recursive descent parsing and semantic analysis in Python.
 
 
 ## Contributing
